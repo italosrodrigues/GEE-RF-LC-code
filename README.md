@@ -19,4 +19,4 @@ To extract or determine the most reliable training pixels within areas of unchan
 
 The model result is a single raster file including the four aforementioned land covers; also, the area (km2) of each land cover, overall accuracy, and Kappa coefficient of the classification will be displayed in the right bar of the GEE.
 
-The historical land cover maps used to create and identify the Land cover permanent zones are open access and are available at https://opendata.nfis.org/mapserver/nfis-change_eng.html
+The historical land cover maps (Hermosilla et al., 2022)) used to create and identify the Land cover permanent zones are open access and are available at https://opendata.nfis.org/mapserver/nfis-change_eng.html
