@@ -1,5 +1,9 @@
 # GEE-RF-code
-The code used for the Randon Forest (RF) model in Google Earth Engine (GEE)
+The code used for the Randon Forest (RF) model in Google Earth Engine (GEE) 
+
+For Land Sat 5: RF_LS5
+
+For Land Sat 5: RF_LS8
 
 This model was used by Italo Rodrigues as part of his PhD project "Multi-decadal Floodplain Classification and Trend Analysis in the Upper Columbia River Valley, British Columbia" as a first approach for land cover classification.
 
