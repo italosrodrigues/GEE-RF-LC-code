@@ -1,0 +1,167 @@
+function maskL457sr(image) {
+  // Bit 0 - Fill
+  // Bit 1 - Dilated Cloud
+  // Bit 2 - Unused
+  // Bit 3 - Cloud
+  // Bit 4 - Cloud Shadow
+  var qaMask = image.select('QA_PIXEL').bitwiseAnd(parseInt('11111', 2)).eq(0);
+  var saturationMask = image.select('QA_RADSAT').eq(0);
+
+  // Apply the scaling factors to the appropriate bands.
+  var opticalBands = image.select('SR_B.').multiply(0.0000275).add(-0.2);
+  var thermalBand = image.select('ST_B6').multiply(0.00341802).add(149.0);
+
+  // Replace the original bands with the scaled ones and apply the masks.
+  return image.addBands(opticalBands, null, true)
+      .addBands(thermalBand, null, true)
+      .updateMask(qaMask)
+      .updateMask(saturationMask)
+      .clip(geometry);
+}
+
+// Map the function over one year of data.
+var collection = ee.ImageCollection('LANDSAT/LT05/C02/T1_L2')
+                     .filterDate('2011-08-01', '2011-09-15')
+                     .map(maskL457sr);
+
+var composite = collection.median();
+
+// Display the results.
+
+Map.addLayer(composite, {bands: ['SR_B5', 'SR_B4', 'SR_B3'], min: 0, max: 0.3}, 'RGB');
+
+
+//_________________Permanent_Zones_Used_To_Allocate_Trainning/Validating_Pixels________________//
+
+var colours = ['cc0013','aec3d4']; // Create a colour pallete
+Map.addLayer(water_freq,
+            {palette: colours, min: 0, max: 1},
+            "Water_Perm");
+
+var colours = ['cc0013','111149']; // Create a colour pallete
+Map.addLayer(marsh_freq,
+            {palette: colours, min: 0, max: 1},
+            "Marsh_Perm");
+
+var colours = ['cc0013','91af40']; // Create a colour pallete
+Map.addLayer(grass_freq,
+            {palette: colours, min: 0, max: 1},
+            "Grass_Perm"); 
+            
+var colours = ['cc0013','387242']; // Create a colour pallete
+Map.addLayer(woody_freq,
+            {palette: colours, min: 0, max: 1},
+            "Woody_Perm");
+
+
+// Use these bands for prediction.
+var bands = ['SR_B1', 'SR_B2', 'SR_B3', 'SR_B4',
+             'SR_B5', 'SR_B7'];
+var composite = composite.select(bands);
+
+//Gather Data from Polygons
+
+var ABtrainingPolys = LC_Water.merge(LC_Marsh) //Merges all points
+                          .merge(LC_Woody).merge(LC_WetMeadow);
+                          
+
+var ABtrainingPixels = composite.sampleRegions({   //composite = clipAfter
+  collection: ABtrainingPolys,
+  properties: ['LC'],
+  scale: 30
+});
+
+//Train the classifier
+// Splits data into training and validation groups. Set at 70% training/30% validation
+var splitData = function(data){
+  var dict = {};
+  var randomTpixels = data.randomColumn(); 
+  var trainingData = randomTpixels.filter(ee.Filter.lt('random', 0.7));
+  var valiData = randomTpixels.filter(ee.Filter.gte('random', 0.7));
+  
+  dict.training = trainingData;
+  dict.validation = valiData;
+  
+  return dict;
+  
+};
+
+var ABdata = splitData(ABtrainingPixels);
+
+//RandomForest classification approach
+//Create the RF_classifier, whereas 10 is the number of trees
+var ABclassifiedTD = ee.Classifier.smileRandomForest(1500).train(ABdata.training, 'LC', bands);
+
+// Creates error matrix
+var createMatrix = function(data){
+  var trainAccuracy = data.errorMatrix('LC', 'classification');
+  print('Resubstitution error matrix: ', trainAccuracy);
+  print('Training overall accuracy: ', trainAccuracy.accuracy());
+  print("Producer's accuracy or Comission error", trainAccuracy.consumersAccuracy());
+  print("Producer's accuracy or Omission Error", trainAccuracy.producersAccuracy());
+  print('Training Kappa index:', trainAccuracy.kappa());
+};
+
+var ABvalidation = ABdata.validation.classify(ABclassifiedTD); // Classifies the validation data
+
+createMatrix(ABvalidation); // Print the error matrix
+
+
+//Run RF on Chosen Image
+var rfclassification = composite.classify(ABclassifiedTD);
+
+var ABcolours = ['aec3d4', '111149', '91af40', '387242']; // Create a colour pallete
+
+Map.addLayer(rfclassification,
+            {palette: ABcolours, min: 1, max: 4}, // min and max indicate that there will be 4 classes coloured
+            "RF - Classification Approach"); // Add the classification to the map with the four classes being coloured according to ABcolours
+
+//Calculating Area of Each Class
+var classArea = function(image){
+  var areaImage = ee.Image.pixelArea().addBands(
+        image);
+   
+  var areas = areaImage.reduceRegion({
+        reducer: ee.Reducer.sum().group({
+        groupField: 1,
+        groupName: 'classification',
+      }),
+      geometry: geometry,
+      scale: 30, 
+      maxPixels: 1000000000
+      }); 
+  
+  var classAreas = ee.List(areas.get('groups'));
+   
+  var classAreaLists = classAreas.map(function(item) { // Function within a function to create a dictionary with the values for every group
+    var areaDict = ee.Dictionary(item);
+    var classNumber = ee.Number(areaDict.get('classification')).format();
+    var area = ee.Number(
+      areaDict.get('sum')).divide(1000000).round(); // The result will be in square meters, this converts them into square kilometers
+    return ee.List([classNumber, area]);
+  });
+   
+  var result = ee.Dictionary(classAreaLists.flatten()); // Flattens said dictionary so it is readable for us
+  return(result);
+};
+
+//var classArea = classArea.clip(geometry)
+print('after:', classArea(rfclassification))
+
+// Values are in km2
+
+//Adding Permanent Asset Zones
+//var colours = ['aec3d4', '33280d'];
+//Map.addLayer(perm, {min: 0, max: 1, palette: colours}, 'Perm');
+
+//{min: 0, max: 17, palette: igbpPalette},
+//             'IGBP classification')
+
+
+Export.image.toDrive({
+  image: rfclassification,
+  description: 'rfclassification_Month_Year',
+  scale: 30,
+  maxPixels: 1000000000000,
+  region: geometry,
+});
