@@ -6,6 +6,7 @@ This model was used by Italo Rodrigues as part of his PhD project "Multi-decadal
 The model inputs are divided in to files:
 
 Training pixels data (70% used for training)
+
 Validation pixels data (30% reserved for training)
 
 In this research, we utilise a variety of reference remote sensing data sources: UAV and Airborne LiDAR, aerial photographs, geotagged photos, Sentinel 2, and historical classified land cover (Hermosilla et al., 2022) to generate training samples per each year. 
